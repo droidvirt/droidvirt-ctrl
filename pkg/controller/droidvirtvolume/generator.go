@@ -98,13 +98,15 @@ cp_set_owner "/mnt/src/android-6.0-r3/data/media/0/tencent/hongmo_device_info.js
 
 func (r *ReconcileDroidVirtVolume) genPVCLabels(virtVolume *dvv1alpha1.DroidVirtVolume) map[string]string {
 	return map[string]string{
-		"droidvirt.io/droidvirtvolume": virtVolume.Name,
+		"droidvirtvolume.droidvirt.io/name": virtVolume.Name,
+		"droidvirtvolume.droidvirt.io/phone": virtVolume.Spec.Device.Phone,
 	}
 }
 
 func (r *ReconcileDroidVirtVolume) genVMILabels(virtVolume *dvv1alpha1.DroidVirtVolume) map[string]string {
 	return map[string]string{
-		"droidvirt.io/droidvirtvolume": virtVolume.Name,
+		"droidvirtvolume.droidvirt.io/name": virtVolume.Name,
+		"droidvirtvolume.droidvirt.io/phone": virtVolume.Spec.Device.Phone,
 	}
 }
 
@@ -118,7 +120,6 @@ func (r *ReconcileDroidVirtVolume) newPVCForDroidVirtVolume(virtVolume *dvv1alph
 			annotations[config.RBDClonedInfoAnnotation] = string(cloneInfoBytes)
 		}
 	}
-	fmt.Printf("annotations: '%v' \n", annotations)
 
 	claim := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -142,9 +143,10 @@ func (r *ReconcileDroidVirtVolume) newVMIForDroidVirtVolume(virtVolume *dvv1alph
 		{
 			Name: "os-disk",
 			VolumeSource: kubevirtv1.VolumeSource{
-				HostDisk: &kubevirtv1.HostDisk{
-					Type: "Disk",
-					Path: "/home/wegroup/droidvirt/migration-data/ubuntu-cloud/disk.img",
+				Ephemeral: &kubevirtv1.EphemeralVolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: config.CloudInitOSPVCName,
+					},
 				},
 			},
 		},
@@ -264,9 +266,6 @@ func (r *ReconcileDroidVirtVolume) newVMIForDroidVirtVolume(virtVolume *dvv1alph
 			},
 		},
 		Spec: kubevirtv1.VirtualMachineInstanceSpec{
-			NodeSelector: map[string]string{
-				"kubernetes.io/hostname": "node1",
-			},
 			Domain: kubevirtv1.DomainSpec{
 				CPU: &kubevirtv1.CPU{
 					Model:   "host-model",

@@ -9,6 +9,8 @@ spec:
     listKind: DroidVirtVolumeList
     plural: droidvirtvolumes
     singular: droidvirtvolume
+    shortNames:
+    - dvv
   scope: Namespaced
   versions:
   - name: v1alpha1

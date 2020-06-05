@@ -9,6 +9,8 @@ spec:
     listKind: DroidVirtList
     plural: droidvirts
     singular: droidvirt
+    shortNames:
+    - dv
   scope: Namespaced
   versions:
   - name: v1alpha1
