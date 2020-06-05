@@ -1,15 +1,11 @@
-FROM registry.access.redhat.com/ubi7/ubi-minimal:latest
+FROM golang:1.12.10-alpine3.10
 
-ENV OPERATOR=/usr/local/bin/droidvirt-ctrl \
-    USER_UID=1001 \
-    USER_NAME=droidvirt-ctrl
+ENV GOPATH /go
 
-# install operator binary
-COPY build/_output/bin/droidvirt-ctrl ${OPERATOR}
+COPY . /go/src/github.com/lxs137/droidvirt-ctrl
 
-COPY build/bin /usr/local/bin
-RUN  /usr/local/bin/user_setup
+RUN go build -o /operator /go/src/github.com/lxs137/droidvirt-ctrl/cmd/manager
 
-ENTRYPOINT ["/usr/local/bin/entrypoint"]
+FROM alpine:3.10
 
-USER ${USER_UID}
+COPY --from=0 /operator /usr/local/bin/droidvirt-operator

@@ -15,11 +15,14 @@ spec:
       serviceAccountName: droidvirt-ctrl
       containers:
         - name: droidvirt-ctrl
-          # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: registry.cn-shanghai.aliyuncs.com/droidvirt/droidvirt-ctrl:202006031811
           command:
-          - droidvirt-ctrl
+          - /usr/local/bin/droidvirt-operator
           imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: 500m
+              memory: 500Mi
           env:
             - name: WATCH_NAMESPACE
               valueFrom:
