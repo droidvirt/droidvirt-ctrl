@@ -2,8 +2,11 @@ package droidvirt
 
 import (
 	"context"
-	droidvirtv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
-	"github.com/lxs137/droidvirt-ctrl/pkg/syncer"
+	"fmt"
+	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
+	"time"
+
+	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,20 +48,21 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource DroidVirt
-	err = c.Watch(&source.Kind{Type: &droidvirtv1alpha1.DroidVirt{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(&source.Kind{Type: &dvv1alpha1.DroidVirt{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
 	}
 
 	watchResources := []runtime.Object{
-		&kubevirtv1.VirtualMachine{},
+		&kubevirtv1.VirtualMachineInstance{},
+		&corev1.PersistentVolumeClaim{},
 		&corev1.Service{},
 	}
 
 	for _, subResource := range watchResources {
 		err = c.Watch(&source.Kind{Type: subResource}, &handler.EnqueueRequestForOwner{
 			IsController: true,
-			OwnerType:    &droidvirtv1alpha1.DroidVirt{},
+			OwnerType:    &dvv1alpha1.DroidVirt{},
 		})
 		if err != nil {
 			return err
@@ -75,8 +79,8 @@ var _ reconcile.Reconciler = &ReconcileDroidVirt{}
 type ReconcileDroidVirt struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
+	client   client.Client
+	scheme   *runtime.Scheme
 	recorder record.EventRecorder
 }
 
@@ -87,11 +91,10 @@ type ReconcileDroidVirt struct {
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileDroidVirt) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling DroidVirt")
 
 	// Fetch the DroidVirt instance
-	instance := &droidvirtv1alpha1.DroidVirt{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	virt := &dvv1alpha1.DroidVirt{}
+	err := r.client.Get(context.TODO(), request.NamespacedName, virt)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -103,28 +106,128 @@ func (r *ReconcileDroidVirt) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	log.Info("Reconciling Resource %s, '%+v'", instance.Name, instance.Spec)
-	// if the CRD is terminating, stop reconcile
-	if instance.ObjectMeta.DeletionTimestamp != nil {
+	reqLogger.Info("Reconciling DroidVirt", "DroidVirt.Spec", virt.Spec, "DroidVirt.Status", virt.Status)
+	switch virt.Status.Phase {
+	case "":
+		vmi, err := r.newVMIForDroidVirt(virt)
+		if err != nil {
+			_ = r.appendLogAndSync(virt, fmt.Sprintf("generate VMI spec error: %v", err))
+			return reconcile.Result{}, fmt.Errorf("generate VMI spec error: %v", err)
+		}
+
+		// Create VMI if not found
+		if err := utils.CreateIfNotExistsVMI(r.client, r.scheme, vmi); err != nil {
+			_ = r.appendLogAndSync(virt, fmt.Sprintf("creating VMI error, retry after 30s: %v", err))
+			return reconcile.Result{
+				Requeue:      true,
+				RequeueAfter: time.Second * 30,
+			}, err
+		}
+		reqLogger.Info("VMI created")
+
+		virt.Status.Phase = dvv1alpha1.VirtualMachinePending
+		virt.Status.RelatedVMI = vmi.Name
+		r.appendLog(virt, fmt.Sprintf("VMI is created: %s/%s", vmi.Namespace, vmi.Name))
+		_ = r.syncStatus(virt)
+		return reconcile.Result{}, nil
+	case dvv1alpha1.VirtualMachinePending:
+		vmi, err := r.relatedVMI(virt)
+		if err != nil || vmi == nil {
+			reqLogger.Error(err, "Related VMI not found")
+			return reconcile.Result{}, err
+		}
+
+		switch vmi.Status.Phase {
+		case kubevirtv1.Pending, kubevirtv1.Scheduled, kubevirtv1.Scheduling:
+			reqLogger.Info("Related VMI is pending, waiting...")
+			return reconcile.Result{
+				Requeue:      true,
+				RequeueAfter: time.Second * 30,
+			}, nil
+		case kubevirtv1.Running:
+			virt.Status.Phase = dvv1alpha1.VirtualMachineRunning
+			r.appendLog(virt, fmt.Sprintf("VMI is running: %v", vmi.ObjectMeta))
+			_ = r.syncStatus(virt)
+			return reconcile.Result{}, nil
+		case kubevirtv1.Succeeded, kubevirtv1.Failed, kubevirtv1.Unknown:
+			virt.Status.Phase = dvv1alpha1.VirtualMachineDown
+			r.appendLog(virt, fmt.Sprintf("VMI is %s: %v", vmi.Status.Phase, vmi.ObjectMeta))
+			_ = r.syncStatus(virt)
+			return reconcile.Result{}, fmt.Errorf("VMI is down")
+		}
+	case dvv1alpha1.VirtualMachineRunning:
+		vmi, err := r.relatedVMI(virt)
+		if vmi == nil {
+			reqLogger.Error(err, "Related VMI not found")
+			virt.Status.Phase = dvv1alpha1.VirtualMachineDown
+			r.appendLog(virt, fmt.Sprintf("VMI is down"))
+			_ = r.syncStatus(virt)
+			return reconcile.Result{}, fmt.Errorf("VMI is down")
+		}
+
+		service, err := r.newServiceForDroidVirt(virt)
+		if err != nil {
+			_ = r.appendLogAndSync(virt, fmt.Sprintf("generate Service spec error: %v", err))
+			return reconcile.Result{}, fmt.Errorf("generate Service spec error: %v", err)
+		}
+
+		// Create Service if not found
+		if err := utils.CreateIfNotExistsService(r.client, r.scheme, service); err != nil {
+			_ = r.appendLogAndSync(virt, fmt.Sprintf("creating Service error, retry after 30s: %v", err))
+			return reconcile.Result{
+				Requeue:      true,
+				RequeueAfter: time.Second * 30,
+			}, err
+		}
+		reqLogger.Info("Service created")
+
+		gatewaySpec := virt.Status.Gateway
+		if gatewaySpec == nil {
+			gatewaySpec = &dvv1alpha1.VirtGateway{
+				VncWebsocketUrl: fmt.Sprintf("/droid/%s/ws", virt.UID),
+			}
+		}
+		mapping, err := r.newGatewayMappingForService(gatewaySpec, virt, service)
+		if err != nil {
+			_ = r.appendLogAndSync(virt, fmt.Sprintf("generate Mapping spec error: %v", err))
+			return reconcile.Result{}, fmt.Errorf("generate Mapping spec error: %v", err)
+		}
+
+		// Create Mapping if not found
+		if err := utils.CreateIfNotExistsMapping(r.client, mapping); err != nil {
+			_ = r.appendLogAndSync(virt, fmt.Sprintf("creating Mapping error, retry after 30s: %v", err))
+			return reconcile.Result{
+				Requeue:      true,
+				RequeueAfter: time.Second * 30,
+			}, err
+		}
+		reqLogger.Info("Mapping created")
+
+		virt.Status.Phase = dvv1alpha1.GatewayServiceReady
+		virt.Status.Gateway = gatewaySpec
+		r.appendLog(virt, fmt.Sprintf("ambassador.io/mapping is ready: %v", mapping))
+		_ = r.syncStatus(virt)
+		return reconcile.Result{}, nil
+	case dvv1alpha1.VirtualMachineDown:
+		vmi, err := r.relatedVMI(virt)
+		if vmi != nil {
+			err = r.client.Delete(context.TODO(), vmi)
+			if err != nil {
+				reqLogger.Error(err, "Down VMI can't be deleted: %v", vmi.ObjectMeta)
+				return reconcile.Result{
+					Requeue:      true,
+					RequeueAfter: time.Second * 30,
+				}, err
+			}
+		}
+		reqLogger.Info("Down VMI has been deleted")
+
+		virt.Status.Phase = ""
+		virt.Status.RelatedVMI = ""
+		r.appendLog(virt, fmt.Sprintf("Down VMI has been deleted"))
+		_ = r.syncStatus(virt)
 		return reconcile.Result{}, nil
 	}
-	syncers := make([]syncer.Interface, 0)
-	syncers = append(syncers, NewProbeDeploySyncer(instance, r.client, r.scheme))
-	if err := r.sync(syncers); err != nil {
-		return reconcile.Result{}, err
-	}
-	return reconcile.Result{}, r.updateStatus(instance)
-}
 
-func (r *ReconcileDroidVirt) sync(syncers []syncer.Interface) error {
-	for _, s := range syncers {
-		if err := syncer.Sync(context.TODO(), s, r.recorder); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *ReconcileDroidVirt) updateStatus(dv *droidvirtv1alpha1.DroidVirt) error {
-	return nil
+	return reconcile.Result{}, nil
 }

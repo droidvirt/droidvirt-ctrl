@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -13,20 +14,30 @@ type DroidVirtSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Phone   string                    `json:"string"`
-	Apps    map[string]AndroidAppSpec `json:"apps,omitempty"`
-	Ingress VirtIngressSpec           `json:"ingress,omitempty"`
+	OSPVCSource      corev1.PersistentVolumeClaimVolumeSource `json:"osPVC"`
+	DataVolumeSource DroidVirtVolumeSelector                  `json:"dataVolume"`
 }
 
-type VirtIngressSpec struct {
-	VncWebsocket string `json:"vncWebsocket,omitempty"`
-	SSH          string `json:"ssh,omitempty"`
+type DroidVirtVolumeSelector struct {
+	Phone string `json:"phone"`
 }
 
-type AndroidAppSpec struct {
-	PackageID string            `json:"string"`
-	Info      map[string]string `json:"info,omitempty"`
+type VirtGateway struct {
+	VncWebsocketUrl string `json:"vncWebsocketUrl,omitempty"`
 }
+
+type DroidVirtPhase string
+
+const (
+	// VMI object has been created
+	VirtualMachinePending DroidVirtPhase = "VMPending"
+	// VMI's phase is "Running"
+	VirtualMachineRunning DroidVirtPhase = "VMRunning"
+	// Ambassador's gateway Mapping service is ready
+	GatewayServiceReady DroidVirtPhase = "ServiceReady"
+	// VMI is shutdown
+	VirtualMachineDown DroidVirtPhase = "VMDown"
+)
 
 // DroidVirtStatus defines the observed state of DroidVirt
 // +k8s:openapi-gen=true
@@ -34,12 +45,10 @@ type DroidVirtStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Apps map[string]AndroidAppStatus `json:"apps,omitempty"`
-}
-
-type AndroidAppStatus struct {
-	UpdateTime *metav1.Time      `json:"updateTime,omitempty"`
-	Info       map[string]string `json:"info,omitempty"`
+	RelatedVMI string         `json:"relatedVMI,omitempty"`
+	Phase      DroidVirtPhase `json:"phase,omitempty"`
+	Logs       []StatusLog    `json:"logs,omitempty"`
+	Gateway    *VirtGateway   `json:"gateway,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -7,6 +7,7 @@ import (
 
 	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
 	"github.com/lxs137/droidvirt-ctrl/pkg/config"
+	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -96,20 +97,6 @@ cp_set_owner "/mnt/src/android-6.0-r3/data/media/0/tencent/hongmo_device_info.js
 `
 )
 
-func (r *ReconcileDroidVirtVolume) genPVCLabels(virtVolume *dvv1alpha1.DroidVirtVolume) map[string]string {
-	return map[string]string{
-		"droidvirtvolume.droidvirt.io/name": virtVolume.Name,
-		"droidvirtvolume.droidvirt.io/phone": virtVolume.Spec.Device.Phone,
-	}
-}
-
-func (r *ReconcileDroidVirtVolume) genVMILabels(virtVolume *dvv1alpha1.DroidVirtVolume) map[string]string {
-	return map[string]string{
-		"droidvirtvolume.droidvirt.io/name": virtVolume.Name,
-		"droidvirtvolume.droidvirt.io/phone": virtVolume.Spec.Device.Phone,
-	}
-}
-
 func (r *ReconcileDroidVirtVolume) newPVCForDroidVirtVolume(virtVolume *dvv1alpha1.DroidVirtVolume) (*corev1.PersistentVolumeClaim, error) {
 	annotations := make(map[string]string)
 	if virtVolume.Spec.RBDClone != nil {
@@ -125,7 +112,7 @@ func (r *ReconcileDroidVirtVolume) newPVCForDroidVirtVolume(virtVolume *dvv1alph
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        virtVolume.Name + "-propagation-pvc",
 			Namespace:   virtVolume.Namespace,
-			Labels:      r.genPVCLabels(virtVolume),
+			Labels:      utils.GenPVCLabelsForDroidVirtVolume(virtVolume),
 			Annotations: annotations,
 		},
 		Spec: *virtVolume.Spec.ClaimSpec.DeepCopy(),
@@ -257,7 +244,7 @@ func (r *ReconcileDroidVirtVolume) newVMIForDroidVirtVolume(virtVolume *dvv1alph
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      virtVolume.Name + "-propagation-vmi",
 			Namespace: virtVolume.Namespace,
-			Labels:    r.genVMILabels(virtVolume),
+			Labels:    utils.GenVMILabelsForDroidVirtVolume(virtVolume),
 			Annotations: map[string]string{
 				"hooks.kubevirt.io/hookSidecars": "[{\"image\": \"registry.cn-shanghai.aliyuncs.com/droidvirt/hook-sidecar:base\"}]",
 				"vnc.droidvirt.io/port":          "5900",
@@ -310,6 +297,10 @@ func (r *ReconcileDroidVirtVolume) newVMIForDroidVirtVolume(virtVolume *dvv1alph
 				},
 			},
 		},
+	}
+
+	if virtVolume.Spec.MigrateFromVMDK != nil && len(virtVolume.Spec.MigrateFromVMDK.NodeSelector) > 0 {
+		vmi.Spec.NodeSelector = virtVolume.Spec.MigrateFromVMDK.NodeSelector
 	}
 
 	if err := controllerutil.SetControllerReference(virtVolume, vmi, r.scheme); err != nil {

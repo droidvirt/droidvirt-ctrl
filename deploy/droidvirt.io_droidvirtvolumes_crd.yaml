@@ -12,6 +12,19 @@ spec:
     shortNames:
     - dvv
   scope: Namespaced
+  additionalPrinterColumns:
+  - name: Phone
+    type: string
+    JSONPath: .spec.device.phone
+  - name: PVC
+    type: string
+    JSONPath: .status.relatedPVC
+  - name: Phase
+    type: string
+    JSONPath: .status.phase
+  - name: Age
+    type: date
+    JSONPath: .metadata.creationTimestamp
   versions:
   - name: v1alpha1
     served: true

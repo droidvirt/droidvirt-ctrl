@@ -30,7 +30,7 @@ func (r *ReconcileDroidVirtVolume) syncStatus(volume *dvv1alpha1.DroidVirtVolume
 	}
 }
 
-func (r *ReconcileDroidVirtVolume) appendLog(volume *dvv1alpha1.DroidVirtVolume, message string) error {
+func (r *ReconcileDroidVirtVolume) appendLog(volume *dvv1alpha1.DroidVirtVolume, message string) {
 	log := dvv1alpha1.StatusLog{
 		Time:       metav1.Now(),
 		Message:    message,
@@ -41,7 +41,10 @@ func (r *ReconcileDroidVirtVolume) appendLog(volume *dvv1alpha1.DroidVirtVolume,
 	} else {
 		volume.Status.Logs = append(volume.Status.Logs, log)
 	}
+}
 
+func (r *ReconcileDroidVirtVolume) appendLogAndSync(volume *dvv1alpha1.DroidVirtVolume, message string) error {
+	r.appendLog(volume, message)
 	return r.syncStatus(volume)
 }
 

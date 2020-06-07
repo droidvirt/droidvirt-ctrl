@@ -3,6 +3,7 @@ package droidvirtvolume
 import (
 	"context"
 	"fmt"
+	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
 	"time"
 
 	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
@@ -10,7 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -54,7 +54,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	watchResources := []runtime.Object{
-		&kubevirtv1.VirtualMachine{},
+		&kubevirtv1.VirtualMachineInstance{},
 		&corev1.PersistentVolumeClaim{},
 	}
 
@@ -111,23 +111,13 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 		claim, err := r.newPVCForDroidVirtVolume(virtVolume)
 		reqLogger.Info("Generate PVC", "PVC", claim)
 		if err != nil {
-			_ = r.appendLog(virtVolume, fmt.Sprintf("generate PVC spec error: %v", err))
+			_ = r.appendLogAndSync(virtVolume, fmt.Sprintf("generate PVC spec error: %v", err))
 			return reconcile.Result{}, fmt.Errorf("generate PVC spec error: %v", err)
 		}
 
 		// Create PVC if not found
-		found := &corev1.PersistentVolumeClaim{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Name: claim.Name, Namespace: claim.Namespace}, found)
-		if err != nil && errors.IsNotFound(err) {
-			err = r.client.Create(context.TODO(), claim)
-			if err != nil {
-				_ = r.appendLog(virtVolume, fmt.Sprintf("creating PVC error, retry after 30s: %v", err))
-				return reconcile.Result{
-					Requeue:      true,
-					RequeueAfter: time.Second * 30,
-				}, err
-			}
-		} else if err != nil {
+		if err := utils.CreateIfNotExistsPVC(r.client, r.scheme, claim); err != nil {
+			_ = r.appendLogAndSync(virtVolume, fmt.Sprintf("creating PVC error, retry after 30s: %v", err))
 			return reconcile.Result{
 				Requeue:      true,
 				RequeueAfter: time.Second * 30,
@@ -136,6 +126,8 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 		reqLogger.Info("PVC created")
 
 		virtVolume.Status.Phase = dvv1alpha1.VolumePending
+		virtVolume.Status.RelatedPVC = claim.Name
+		r.appendLog(virtVolume, fmt.Sprintf("PVC is created: %s/%s", claim.Namespace, claim.Name))
 		_ = r.syncStatus(virtVolume)
 		return reconcile.Result{}, nil
 	case dvv1alpha1.VolumePending:
@@ -146,18 +138,20 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 		}
 
 		switch claim.Status.Phase {
-		case corev1.ClaimBound:
-			virtVolume.Status.Phase = dvv1alpha1.VolumePVCBounded
-			_ = r.syncStatus(virtVolume)
-			return reconcile.Result{}, nil
 		case corev1.ClaimPending:
 			reqLogger.Info("Related PVC is pending, waiting...")
 			return reconcile.Result{
 				Requeue:      true,
 				RequeueAfter: time.Second * 30,
 			}, nil
+		case corev1.ClaimBound:
+			virtVolume.Status.Phase = dvv1alpha1.VolumePVCBounded
+			r.appendLog(virtVolume, fmt.Sprintf("PVC is bounded: %v", claim.ObjectMeta))
+			_ = r.syncStatus(virtVolume)
+			return reconcile.Result{}, nil
 		case corev1.ClaimLost:
 			virtVolume.Status.Phase = dvv1alpha1.VolumePVCFailed
+			r.appendLog(virtVolume, fmt.Sprintf("PVC is lost: %v", claim.ObjectMeta))
 			_ = r.syncStatus(virtVolume)
 			return reconcile.Result{}, fmt.Errorf("related PVC is lost")
 		}
@@ -171,23 +165,13 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 		vmi, err := r.newVMIForDroidVirtVolume(virtVolume, claim.Name)
 		reqLogger.Info("Generate VMI", "VMI", vmi)
 		if err != nil {
-			_ = r.appendLog(virtVolume, fmt.Sprintf("generate VMI spec error: %v", err))
+			_ = r.appendLogAndSync(virtVolume, fmt.Sprintf("generate VMI spec error: %v", err))
 			return reconcile.Result{}, fmt.Errorf("generate VMI spec error: %v", err)
 		}
 
 		// Create VMI if not found
-		found := &kubevirtv1.VirtualMachineInstance{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Name: vmi.Name, Namespace: vmi.Namespace}, found)
-		if err != nil && errors.IsNotFound(err) {
-			err = r.client.Create(context.TODO(), vmi)
-			if err != nil {
-				_ = r.appendLog(virtVolume, fmt.Sprintf("creating VMI error, retry after 30s: %v", err))
-				return reconcile.Result{
-					Requeue:      true,
-					RequeueAfter: time.Second * 30,
-				}, err
-			}
-		} else if err != nil {
+		if err := utils.CreateIfNotExistsVMI(r.client, r.scheme, vmi); err != nil {
+			_ = r.appendLogAndSync(virtVolume, fmt.Sprintf("creating VMI error, retry after 30s: %v", err))
 			return reconcile.Result{
 				Requeue:      true,
 				RequeueAfter: time.Second * 30,
@@ -196,6 +180,7 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 		reqLogger.Info("VMI created")
 
 		virtVolume.Status.Phase = dvv1alpha1.VolumeInitializing
+		r.appendLog(virtVolume, fmt.Sprintf("VMI is created: %s/%s", vmi.Name, vmi.Namespace))
 		_ = r.syncStatus(virtVolume)
 		return reconcile.Result{}, nil
 	case dvv1alpha1.VolumeInitializing:
@@ -226,6 +211,7 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 					}, err
 				} else {
 					virtVolume.Status.Phase = dvv1alpha1.VolumeReady
+					r.appendLog(virtVolume, fmt.Sprintf("VMI is running, and cloud-init is ready: %v", vmi.ObjectMeta))
 					_ = r.syncStatus(virtVolume)
 					return reconcile.Result{}, nil
 				}
@@ -236,6 +222,7 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 			}, nil
 		case kubevirtv1.Succeeded, kubevirtv1.Failed, kubevirtv1.Unknown:
 			virtVolume.Status.Phase = dvv1alpha1.VolumeInitFailed
+			r.appendLog(virtVolume, fmt.Sprintf("VMI is %s: %v", vmi.Status.Phase, vmi.ObjectMeta))
 			_ = r.syncStatus(virtVolume)
 			return reconcile.Result{}, fmt.Errorf("VMI has some trouble")
 		}
@@ -244,6 +231,7 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 		if claim == nil {
 			reqLogger.Error(err, "Related Claim has lost, recreate it")
 			virtVolume.Status.Phase = ""
+			virtVolume.Status.RelatedPVC = ""
 			_ = r.syncStatus(virtVolume)
 			return reconcile.Result{}, nil
 		}

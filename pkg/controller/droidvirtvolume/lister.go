@@ -2,6 +2,7 @@ package droidvirtvolume
 
 import (
 	"context"
+	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
 
 	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -12,15 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func isControllerBy(object metav1.Object, volume *dvv1alpha1.DroidVirtVolume) bool {
-	if controllerRef := metav1.GetControllerOf(object); controllerRef != nil {
-		return controllerRef.UID == volume.UID
-	}
-	return false
-}
-
 func (r *ReconcileDroidVirtVolume) relatedVMI(volume *dvv1alpha1.DroidVirtVolume) (*kubevirtv1.VirtualMachineInstance, error) {
-	vmiLabels := r.genVMILabels(volume)
+	vmiLabels := utils.GenVMILabelsForDroidVirtVolume(volume)
 	labelSelector := labels.NewSelector()
 	for k, v := range vmiLabels {
 		require, err := labels.NewRequirement(k, selection.Equals, []string{v})
@@ -43,7 +37,7 @@ func (r *ReconcileDroidVirtVolume) relatedVMI(volume *dvv1alpha1.DroidVirtVolume
 
 	var relatedVMI *kubevirtv1.VirtualMachineInstance = nil
 	for _, item := range vmis.Items {
-		if !isControllerBy(&item, volume) {
+		if !metav1.IsControlledBy(&item, volume) {
 			continue
 		}
 		if relatedVMI == nil {
@@ -56,7 +50,7 @@ func (r *ReconcileDroidVirtVolume) relatedVMI(volume *dvv1alpha1.DroidVirtVolume
 }
 
 func (r *ReconcileDroidVirtVolume) relatedPVC(volume *dvv1alpha1.DroidVirtVolume) (*corev1.PersistentVolumeClaim, error) {
-	claimLabels := r.genPVCLabels(volume)
+	claimLabels := utils.GenPVCLabelsForDroidVirtVolume(volume)
 	labelSelector := labels.NewSelector()
 	for k, v := range claimLabels {
 		require, err := labels.NewRequirement(k, selection.Equals, []string{v})
@@ -79,7 +73,7 @@ func (r *ReconcileDroidVirtVolume) relatedPVC(volume *dvv1alpha1.DroidVirtVolume
 
 	var relatedPVC *corev1.PersistentVolumeClaim = nil
 	for _, item := range claims.Items {
-		if !isControllerBy(&item, volume) {
+		if !metav1.IsControlledBy(&item, volume) {
 			continue
 		}
 		if relatedPVC == nil {

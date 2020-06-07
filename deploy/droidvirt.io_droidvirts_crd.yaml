@@ -12,6 +12,25 @@ spec:
     shortNames:
     - dv
   scope: Namespaced
+  additionalPrinterColumns:
+  - name: VMI
+    type: string
+    JSONPath: .status.relatedVMI
+  - name: OS_PVC
+    type: string
+    JSONPath: .spec.osPVC.claimName
+  - name: Data_Volume_Phone
+    type: string
+    JSONPath: .spec.dataVolume.phone
+  - name: Gateway_VNC_Url
+    type: string
+    JSONPath: .status.gateway.vncWebsocketUrl
+  - name: Phase
+    type: string
+    JSONPath: .status.phase
+  - name: Age
+    type: date
+    JSONPath: .metadata.creationTimestamp
   versions:
   - name: v1alpha1
     served: true

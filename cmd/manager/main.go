@@ -20,11 +20,13 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/restmapper"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
+	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
 )
 
 // Change below variables to serve metrics on different host or port.
@@ -112,6 +114,17 @@ func main() {
 	// Setup all Controllers
 	if err := controller.AddToManager(mgr); err != nil {
 		log.Error(err, "")
+		os.Exit(1)
+	}
+
+	cache := mgr.GetCache()
+
+	indexFunc := func(obj k8sruntime.Object) []string {
+		return []string{obj.(*dvv1alpha1.DroidVirtVolume).Spec.Device.Phone}
+	}
+
+	if err := cache.IndexField(&dvv1alpha1.DroidVirtVolume{}, "spec.device.phone", indexFunc); err != nil {
+		log.Error(err, "Can not cache the index")
 		os.Exit(1)
 	}
 

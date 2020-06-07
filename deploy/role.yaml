@@ -27,6 +27,21 @@ rules:
   verbs:
   - '*'
 - apiGroups:
+    - getambassador.io
+  resources:
+    - authservices
+    - consulresolvers
+    - kubernetesendpointresolvers
+    - kubernetesserviceresolvers
+    - mappings
+    - modules
+    - ratelimitservices
+    - tcpmappings
+    - tlscontexts
+    - tracingservices
+  verbs:
+    - '*'
+- apiGroups:
   - apps
   resourceNames:
   - droidvirt-ctrl

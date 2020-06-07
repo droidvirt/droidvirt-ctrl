@@ -47,6 +47,7 @@ type InitForEmptyDiskVMSpec struct {
 type MigrateFromVMDKVMSpec struct {
 	UserData        string                  `json:"userData,omitempty"`
 	MigrationSource kubevirtv1.VolumeSource `json:"migrationSource"`
+	NodeSelector    map[string]string       `json:"nodeSelector,omitempty"`
 }
 
 // DroidVirtVolumeStatus defines the observed state of DroidVirtVolume
@@ -54,8 +55,9 @@ type DroidVirtVolumeStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-	Phase      DroidVirtVolumePhase    `json:"phase,omitempty"`
-	Logs       []StatusLog             `json:"logs,omitempty"`
+	RelatedPVC string               `json:"relatedPVC,omitempty"`
+	Phase      DroidVirtVolumePhase `json:"phase,omitempty"`
+	Logs       []StatusLog          `json:"logs,omitempty"`
 }
 
 type DroidVirtVolumePhase string
@@ -76,8 +78,8 @@ const (
 )
 
 type StatusLog struct {
-	Time       metav1.Time             `json:"time,omitempty"`
-	Message    string                  `json:"message,omitempty"`
+	Time    metav1.Time `json:"time,omitempty"`
+	Message string      `json:"message,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
