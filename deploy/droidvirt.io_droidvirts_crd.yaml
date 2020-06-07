@@ -19,9 +19,9 @@ spec:
   - name: OS_PVC
     type: string
     JSONPath: .spec.osPVC.claimName
-  - name: Data_Volume_Phone
+  - name: Data_PVC
     type: string
-    JSONPath: .spec.dataVolume.phone
+    JSONPath: .status.dataPVC
   - name: Gateway_VNC_Url
     type: string
     JSONPath: .status.gateway.vncWebsocketUrl

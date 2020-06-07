@@ -15,12 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-func (r *ReconcileDroidVirt) newVMIForDroidVirt(virt *dvv1alpha1.DroidVirt) (*kubevirtv1.VirtualMachineInstance, error) {
-	dataPVC, err := r.findDataVolumeRelatedPVC(virt)
-	if dataPVC == nil || err != nil {
-		return nil, fmt.Errorf("can not find PVC of data DroidVirtVolume, err: %v", err)
-	}
-
+func (r *ReconcileDroidVirt) newVMIForDroidVirt(virt *dvv1alpha1.DroidVirt, dataPVC *corev1.PersistentVolumeClaim) (*kubevirtv1.VirtualMachineInstance, error) {
 	bootOrder := uint(1)
 	vmi := &kubevirtv1.VirtualMachineInstance{
 		ObjectMeta: metav1.ObjectMeta{

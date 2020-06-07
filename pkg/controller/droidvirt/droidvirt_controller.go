@@ -109,7 +109,12 @@ func (r *ReconcileDroidVirt) Reconcile(request reconcile.Request) (reconcile.Res
 	reqLogger.Info("Reconciling DroidVirt", "DroidVirt.Spec", virt.Spec, "DroidVirt.Status", virt.Status)
 	switch virt.Status.Phase {
 	case "":
-		vmi, err := r.newVMIForDroidVirt(virt)
+		dataPVC, err := r.findDataVolumeRelatedPVC(virt)
+		if dataPVC == nil || err != nil {
+			return reconcile.Result{}, fmt.Errorf("can not find PVC of data DroidVirtVolume, err: %v", err)
+		}
+
+		vmi, err := r.newVMIForDroidVirt(virt, dataPVC)
 		if err != nil {
 			_ = r.appendLogAndSync(virt, fmt.Sprintf("generate VMI spec error: %v", err))
 			return reconcile.Result{}, fmt.Errorf("generate VMI spec error: %v", err)
@@ -127,6 +132,7 @@ func (r *ReconcileDroidVirt) Reconcile(request reconcile.Request) (reconcile.Res
 
 		virt.Status.Phase = dvv1alpha1.VirtualMachinePending
 		virt.Status.RelatedVMI = vmi.Name
+		virt.Status.DataPVC = dataPVC.Name
 		r.appendLog(virt, fmt.Sprintf("VMI is created: %s/%s", vmi.Namespace, vmi.Name))
 		_ = r.syncStatus(virt)
 		return reconcile.Result{}, nil

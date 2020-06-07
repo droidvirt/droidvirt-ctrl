@@ -46,6 +46,7 @@ type DroidVirtStatus struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 	RelatedVMI string         `json:"relatedVMI,omitempty"`
+	DataPVC    string         `json:"dataPVC,omitempty"`
 	Phase      DroidVirtPhase `json:"phase,omitempty"`
 	Logs       []StatusLog    `json:"logs,omitempty"`
 	Gateway    *VirtGateway   `json:"gateway,omitempty"`

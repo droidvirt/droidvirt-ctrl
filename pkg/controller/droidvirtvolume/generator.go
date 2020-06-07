@@ -94,6 +94,10 @@ chown -h 0:0 /mnt/dest/app/com.tencent.mm/lib
 cp_set_owner "/mnt/src/android-6.0-r3/data/media/0/tencent/wifi_info.json" "/mnt/dest/media/0/tencent/wifi_info.json" "1023:1023"
 
 cp_set_owner "/mnt/src/android-6.0-r3/data/media/0/tencent/hongmo_device_info.json" "/mnt/dest/media/0/tencent/hongmo_device_info.json" "1023:1023"
+
+sync
+umount /mnt/src
+umount /mnt/dest
 `
 )
 
