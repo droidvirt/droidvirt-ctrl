@@ -3,14 +3,12 @@ package droidvirt
 import (
 	"context"
 	"fmt"
-	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
-
 	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -48,18 +46,9 @@ func (r *ReconcileDroidVirt) findDataVolumeRelatedPVC(virt *dvv1alpha1.DroidVirt
 	}
 
 	claimLabels := utils.GenPVCLabelsForDroidVirtVolume(dvv)
-	labelSelector := labels.NewSelector()
-	for k, v := range claimLabels {
-		require, err := labels.NewRequirement(k, selection.Equals, []string{v})
-		if err != nil {
-			continue
-		} else {
-			labelSelector.Add(*require)
-		}
-	}
 	listOpts := &client.ListOptions{
 		Namespace:     dvv.Namespace,
-		LabelSelector: labelSelector,
+		LabelSelector: labels.SelectorFromSet(claimLabels),
 	}
 
 	claims := &corev1.PersistentVolumeClaimList{}
@@ -84,18 +73,9 @@ func (r *ReconcileDroidVirt) findDataVolumeRelatedPVC(virt *dvv1alpha1.DroidVirt
 
 func (r *ReconcileDroidVirt) relatedVMI(virt *dvv1alpha1.DroidVirt) (*kubevirtv1.VirtualMachineInstance, error) {
 	vmiLabels := utils.GenVMILabelsForDroidVirt(virt)
-	labelSelector := labels.NewSelector()
-	for k, v := range vmiLabels {
-		require, err := labels.NewRequirement(k, selection.Equals, []string{v})
-		if err != nil {
-			continue
-		} else {
-			labelSelector.Add(*require)
-		}
-	}
 	listOpts := &client.ListOptions{
 		Namespace:     virt.Namespace,
-		LabelSelector: labelSelector,
+		LabelSelector: labels.SelectorFromSet(vmiLabels),
 	}
 
 	vmis := &kubevirtv1.VirtualMachineInstanceList{}

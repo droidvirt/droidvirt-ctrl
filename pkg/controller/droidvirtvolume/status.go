@@ -32,8 +32,8 @@ func (r *ReconcileDroidVirtVolume) syncStatus(volume *dvv1alpha1.DroidVirtVolume
 
 func (r *ReconcileDroidVirtVolume) appendLog(volume *dvv1alpha1.DroidVirtVolume, message string) {
 	log := dvv1alpha1.StatusLog{
-		Time:       metav1.Now(),
-		Message:    message,
+		Time:    metav1.Now(),
+		Message: message,
 	}
 
 	if volume.Status.Logs == nil {
@@ -48,7 +48,16 @@ func (r *ReconcileDroidVirtVolume) appendLogAndSync(volume *dvv1alpha1.DroidVirt
 	return r.syncStatus(volume)
 }
 
-func waitCloudInitReady(sshPort uint32, sshHost, sshUser, sshPassword string) error {
+type CloudInitStatus string
+
+const (
+	CloudInitRunning CloudInitStatus = "running"
+	CloudInitDone    CloudInitStatus = "done"
+	CloudInitFailed  CloudInitStatus = "failed"
+	CloudInitUnknown CloudInitStatus = "unknown"
+)
+
+func cloudInitStatus(sshPort uint32, sshHost, sshUser, sshPassword string) (CloudInitStatus, error) {
 	config := &ssh.ClientConfig{
 		Timeout:         time.Second * 5,
 		User:            sshUser,
@@ -58,24 +67,29 @@ func waitCloudInitReady(sshPort uint32, sshHost, sshUser, sshPassword string) er
 
 	sshClient, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", sshHost, sshPort), config)
 	if err != nil {
-		return fmt.Errorf("create SSH client error: %v", err)
+		return CloudInitUnknown, fmt.Errorf("create SSH client error: %v", err)
 	}
 	defer sshClient.Close()
 
-	session, err := sshClient.NewSession()
+	statusOutput, _ := executeSSHCmd(sshClient,"cloud-init status")
+
+	if strings.Contains(string(statusOutput), "status: running") {
+		return CloudInitRunning, nil
+	} else if strings.Contains(string(statusOutput), "status: done") {
+		return CloudInitDone, nil
+	} else if strings.Contains(string(statusOutput), "status: error") {
+		result, _ := executeSSHCmd(sshClient,"cat /var/lib/cloud/data/result.json")
+		return CloudInitFailed, fmt.Errorf("cloud-init error, output: %s", string(result))
+	} else {
+		return CloudInitUnknown, fmt.Errorf("cloud-init unknown output: %s", string(statusOutput))
+	}
+}
+
+func executeSSHCmd(client *ssh.Client, cmd string) ([]byte, error) {
+	session, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("create SSH session error: %v", err)
+		return nil, fmt.Errorf("create SSH session error: %v", err)
 	}
 	defer session.Close()
-
-	combo, err := session.CombinedOutput("cloud-init status")
-	if err != nil {
-		return fmt.Errorf("execute SSH command error: %v", err)
-	}
-
-	if strings.Contains(string(combo), "done") {
-		return nil
-	} else {
-		return fmt.Errorf("cloud-init not ready, output: %s", string(combo))
-	}
+	return session.Output(cmd)
 }

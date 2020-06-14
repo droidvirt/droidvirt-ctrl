@@ -180,7 +180,7 @@ func (r *ReconcileDroidVirtVolume) newVMIForDroidVirtVolume(virtVolume *dvv1alph
 			diskMountInfo := map[string]string{
 				config.CloudInitVMIDestDiskSerial: "/mnt/dest",
 			}
-			cloudConfig := genCloudInitMountsConfig(diskMountInfo)
+			cloudConfig := genCloudInitCloudConfig(diskMountInfo)
 			shellScript := strings.Replace(InitForEmptyDiskShellTpl, "PHONE_NO", virtVolume.Spec.Device.Phone, 1)
 			userData = mergeCloudInitUserData(cloudConfig, shellScript)
 		}
@@ -209,7 +209,7 @@ func (r *ReconcileDroidVirtVolume) newVMIForDroidVirtVolume(virtVolume *dvv1alph
 				config.CloudInitVMISrcDiskSerial:  "/mnt/src",
 				config.CloudInitVMIDestDiskSerial: "/mnt/dest",
 			}
-			cloudConfig := genCloudInitMountsConfig(diskMountInfo)
+			cloudConfig := genCloudInitCloudConfig(diskMountInfo)
 			userData = mergeCloudInitUserData(cloudConfig, MigrateFromVMDKShellTpl)
 		}
 
@@ -320,13 +320,26 @@ func mergeCloudInitUserData(cloudConfig, shellScript string) string {
 	return userData
 }
 
-func genCloudInitMountsConfig(serialToMountpoint map[string]string) string {
+func genCloudInitCloudConfig(serialToMountpoint map[string]string) string {
 	mountCmds := []string{}
-	cmdTpl := `[ /dev/disk/by-id/virtio-SERIAL-part1, MOUNTPOINT, "ext4", "defaults,nofail,discard", "0", "0" ]`
+	//repairCmdTpl := `[ e2fsck, -p, /dev/disk/by-id/virtio-SERIAL-part1 ]`
+	//mountCmdTpl := `[ mount, /dev/disk/by-id/virtio-SERIAL-part1, MOUNTPOINT ]`
+	//for k, v := range serialToMountpoint {
+	//	repairCmd := strings.Replace(repairCmdTpl, "SERIAL", k, 1)
+	//	mountCmd := strings.Replace(mountCmdTpl, "SERIAL", k, 1)
+	//	mountCmd = strings.Replace(mountCmd, "MOUNTPOINT", v, 1)
+	//	mountCmds = append(mountCmds, repairCmd, mountCmd)
+	//}
+	//mountConfig := "bootcmd:\n"
+	//for _, item := range mountCmds {
+	//	mountConfig += fmt.Sprintf("- %s\n", item)
+	//}
+
+	mountCmdTpl := `[ /dev/disk/by-id/virtio-SERIAL-part1, MOUNTPOINT, "ext4", "defaults", "0", "0" ]`
 	for k, v := range serialToMountpoint {
-		cmd := strings.Replace(cmdTpl, "SERIAL", k, 1)
-		cmd = strings.Replace(cmd, "MOUNTPOINT", v, 1)
-		mountCmds = append(mountCmds, cmd)
+		mountCmd := strings.Replace(mountCmdTpl, "SERIAL", k, 1)
+		mountCmd = strings.Replace(mountCmd, "MOUNTPOINT", v, 1)
+		mountCmds = append(mountCmds, mountCmd)
 	}
 	mountConfig := "mounts:\n"
 	for _, item := range mountCmds {

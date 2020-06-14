@@ -151,7 +151,30 @@ func (r *ReconcileDroidVirt) Reconcile(request reconcile.Request) (reconcile.Res
 				RequeueAfter: time.Second * 30,
 			}, nil
 		case kubevirtv1.Running:
+			if vmi.Status.Interfaces == nil || len(vmi.Status.Interfaces) == 0 {
+				return reconcile.Result{
+					Requeue:      true,
+					RequeueAfter: time.Second * 30,
+				}, fmt.Errorf("waiting VMI get ip address")
+			}
+			virtInterfaces := []dvv1alpha1.VMINetworkInterface{}
+			for _, item := range vmi.Status.Interfaces {
+				if item.IP == "" {
+					continue
+				}
+				virtInterfaces = append(virtInterfaces, dvv1alpha1.VMINetworkInterface{
+					IP:  item.IP,
+					MAC: item.MAC,
+				})
+			}
+			if len(virtInterfaces) == 0 {
+				return reconcile.Result{
+					Requeue:      true,
+					RequeueAfter: time.Second * 30,
+				}, fmt.Errorf("waiting VMI get ip address")
+			}
 			virt.Status.Phase = dvv1alpha1.VirtualMachineRunning
+			virt.Status.Interfaces = virtInterfaces
 			r.appendLog(virt, fmt.Sprintf("VMI is running: %v", vmi.ObjectMeta))
 			_ = r.syncStatus(virt)
 			return reconcile.Result{}, nil

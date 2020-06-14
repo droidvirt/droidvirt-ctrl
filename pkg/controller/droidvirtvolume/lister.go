@@ -8,25 +8,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (r *ReconcileDroidVirtVolume) relatedVMI(volume *dvv1alpha1.DroidVirtVolume) (*kubevirtv1.VirtualMachineInstance, error) {
 	vmiLabels := utils.GenVMILabelsForDroidVirtVolume(volume)
-	labelSelector := labels.NewSelector()
-	for k, v := range vmiLabels {
-		require, err := labels.NewRequirement(k, selection.Equals, []string{v})
-		if err != nil {
-			continue
-		} else {
-			labelSelector.Add(*require)
-		}
-	}
 	listOpts := &client.ListOptions{
 		Namespace:     volume.Namespace,
-		LabelSelector: labelSelector,
+		LabelSelector: labels.SelectorFromSet(vmiLabels),
 	}
 
 	vmis := &kubevirtv1.VirtualMachineInstanceList{}
@@ -51,18 +41,9 @@ func (r *ReconcileDroidVirtVolume) relatedVMI(volume *dvv1alpha1.DroidVirtVolume
 
 func (r *ReconcileDroidVirtVolume) relatedPVC(volume *dvv1alpha1.DroidVirtVolume) (*corev1.PersistentVolumeClaim, error) {
 	claimLabels := utils.GenPVCLabelsForDroidVirtVolume(volume)
-	labelSelector := labels.NewSelector()
-	for k, v := range claimLabels {
-		require, err := labels.NewRequirement(k, selection.Equals, []string{v})
-		if err != nil {
-			continue
-		} else {
-			labelSelector.Add(*require)
-		}
-	}
 	listOpts := &client.ListOptions{
 		Namespace:     volume.Namespace,
-		LabelSelector: labelSelector,
+		LabelSelector: labels.SelectorFromSet(claimLabels),
 	}
 
 	claims := &corev1.PersistentVolumeClaimList{}

@@ -202,18 +202,24 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 			if len(vmi.Status.Interfaces) > 0 {
 				vmiIP := vmi.Status.Interfaces[0].IP
 				reqLogger.Info("cloud-init VMI's info", "ip", vmiIP)
-				err = waitCloudInitReady(22, vmiIP, config.CloudInitVMISSHUser, config.CloudInitVMISSHPassword)
-				if err != nil {
+				status, err := cloudInitStatus(22, vmiIP, config.CloudInitVMISSHUser, config.CloudInitVMISSHPassword)
+				switch status {
+				case CloudInitUnknown, CloudInitRunning:
 					reqLogger.Error(err, "cloud-init SSH check failed, retry after 30s")
 					return reconcile.Result{
 						Requeue:      true,
 						RequeueAfter: time.Second * 30,
 					}, err
-				} else {
+				case CloudInitDone:
 					virtVolume.Status.Phase = dvv1alpha1.VolumeReady
 					r.appendLog(virtVolume, fmt.Sprintf("VMI is running, and cloud-init is ready: %v", vmi.ObjectMeta))
 					_ = r.syncStatus(virtVolume)
 					return reconcile.Result{}, nil
+				case CloudInitFailed:
+					virtVolume.Status.Phase = dvv1alpha1.VolumeInitFailed
+					r.appendLog(virtVolume, fmt.Sprintf("cloud-init error output: %v", err))
+					_ = r.syncStatus(virtVolume)
+					return reconcile.Result{}, err
 				}
 			}
 			return reconcile.Result{
@@ -226,7 +232,7 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 			_ = r.syncStatus(virtVolume)
 			return reconcile.Result{}, fmt.Errorf("VMI has some trouble")
 		}
-	case dvv1alpha1.VolumeReady:
+	case dvv1alpha1.VolumeReady, dvv1alpha1.VolumeInitFailed:
 		claim, err := r.relatedPVC(virtVolume)
 		if claim == nil {
 			reqLogger.Error(err, "Related Claim has lost, recreate it")
@@ -239,6 +245,7 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 		vmi, _ := r.relatedVMI(virtVolume)
 		if vmi != nil {
 			reqLogger.Info("Cloud-init VMI's job is complete, delete it", "VMI.Spec", vmi.Spec, "VMI.status", vmi.Status)
+			//return reconcile.Result{}, nil
 			return reconcile.Result{}, r.client.Delete(context.TODO(), vmi)
 		}
 
