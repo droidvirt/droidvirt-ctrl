@@ -12,6 +12,8 @@ spec:
     shortNames:
     - dvv
   scope: Namespaced
+  subresources:
+    status: {}
   additionalPrinterColumns:
   - name: Phone
     type: string

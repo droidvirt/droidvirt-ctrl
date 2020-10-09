@@ -104,7 +104,7 @@ func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconci
 		return reconcile.Result{}, err
 	}
 
-	reqLogger.Info("Reconciling DroidVirtVolume", "DroidVirtVolume.Spec", virtVolume.Spec, "DroidVirtVolume.Status", virtVolume.Status)
+	reqLogger.Info("Reconciling DroidVirtVolume", "Status", virtVolume.Status)
 	switch virtVolume.Status.Phase {
 	case "":
 		// Generate PVC spec

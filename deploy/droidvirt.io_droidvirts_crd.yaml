@@ -12,6 +12,8 @@ spec:
     shortNames:
     - dv
   scope: Namespaced
+  subresources:
+    status: {}
   additionalPrinterColumns:
   - name: VMI
     type: string

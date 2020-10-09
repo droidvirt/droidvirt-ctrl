@@ -8,7 +8,7 @@ import (
 	"runtime"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	//_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/lxs137/droidvirt-ctrl/pkg/apis"
 	"github.com/lxs137/droidvirt-ctrl/pkg/controller"
@@ -17,8 +17,6 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
-	"github.com/operator-framework/operator-sdk/pkg/metrics"
-	"github.com/operator-framework/operator-sdk/pkg/restmapper"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
@@ -29,11 +27,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 )
 
-// Change below variables to serve metrics on different host or port.
-var (
-	metricsHost       = "0.0.0.0"
-	metricsPort int32 = 8383
-)
 var log = logf.Log.WithName("cmd")
 
 func printVersion() {
@@ -90,8 +83,6 @@ func main() {
 	// Create a new Cmd to provide shared dependencies and start components
 	mgr, err := manager.New(cfg, manager.Options{
 		Namespace:          namespace,
-		MapperProvider:     restmapper.NewDynamicRESTMapper,
-		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
 	})
 	if err != nil {
 		log.Error(err, "")
@@ -118,20 +109,12 @@ func main() {
 	}
 
 	cache := mgr.GetCache()
-
-	indexFunc := func(obj k8sruntime.Object) []string {
+	if err := cache.IndexField(context.TODO(), &dvv1alpha1.DroidVirtVolume{}, "spec.device.phone",
+	func(obj k8sruntime.Object) []string {
 		return []string{obj.(*dvv1alpha1.DroidVirtVolume).Spec.Device.Phone}
-	}
-
-	if err := cache.IndexField(&dvv1alpha1.DroidVirtVolume{}, "spec.device.phone", indexFunc); err != nil {
+	}); err != nil {
 		log.Error(err, "Can not cache the index")
 		os.Exit(1)
-	}
-
-	// Create Service object to expose the metrics port.
-	_, err = metrics.ExposeMetricsPort(ctx, metricsPort)
-	if err != nil {
-		log.Info(err.Error())
 	}
 
 	log.Info("Starting the Cmd.")

@@ -1,4 +1,4 @@
-FROM golang:1.12.10-alpine3.10
+FROM golang:1.14-alpine3.12
 
 ENV GOPATH /go
 

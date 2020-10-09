@@ -20,7 +20,7 @@ func (r *ReconcileDroidVirtVolume) relatedVMI(volume *dvv1alpha1.DroidVirtVolume
 	}
 
 	vmis := &kubevirtv1.VirtualMachineInstanceList{}
-	err := r.client.List(context.TODO(), listOpts, vmis)
+	err := r.client.List(context.TODO(), vmis, listOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (r *ReconcileDroidVirtVolume) relatedPVC(volume *dvv1alpha1.DroidVirtVolume
 	}
 
 	claims := &corev1.PersistentVolumeClaimList{}
-	err := r.client.List(context.TODO(), listOpts, claims)
+	err := r.client.List(context.TODO(), claims, listOpts)
 	if err != nil {
 		return nil, err
 	}

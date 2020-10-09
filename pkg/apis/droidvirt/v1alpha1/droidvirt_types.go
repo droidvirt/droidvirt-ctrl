@@ -45,12 +45,16 @@ type DroidVirtStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	RelatedVMI string                `json:"relatedVMI,omitempty"`
-	DataPVC    string                `json:"dataPVC,omitempty"`
 	Phase      DroidVirtPhase        `json:"phase,omitempty"`
-	Logs       []StatusLog           `json:"logs,omitempty"`
+
+	DataPVC    string                `json:"dataPVC,omitempty"`
+
 	Gateway    *VirtGateway          `json:"gateway,omitempty"`
+
+	RelatedPod string                `json:"relatedPod,omitempty"`
 	Interfaces []VMINetworkInterface `json:"interfaces,omitempty"`
+
+	Logs       []StatusLog           `json:"logs,omitempty"`
 }
 
 type VMINetworkInterface struct {

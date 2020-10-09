@@ -41,6 +41,18 @@ func GenSVCLabelsForDroidVirt(virt *dvv1alpha1.DroidVirt) map[string]string {
 	}
 }
 
+func GenMappingLabelsForDroidVirt(virt *dvv1alpha1.DroidVirt) map[string]string {
+	return map[string]string{
+		"droidvirt.droidvirt.io/name": virt.Name,
+	}
+}
+
+func GenPodLabelsForVMI(vmi *kubevirtv1.VirtualMachineInstance) map[string]string {
+	return map[string]string{
+		"kubevirt.io/created-by": string(vmi.UID),
+	}
+}
+
 func CreateIfNotExists(c client.Client, ifExistKey client.ObjectKey, obj runtime.Object, gvk schema.GroupVersionKind) error {
 	found := &unstructured.Unstructured{}
 	found.SetGroupVersionKind(gvk)
@@ -85,6 +97,10 @@ func CreateIfNotExistsVMI(c client.Client, s *runtime.Scheme, vmi *kubevirtv1.Vi
 		Namespace: vmi.Namespace,
 		Name:      vmi.Name,
 	}, vmi, gvk)
+}
+
+func DeleteVMI(c client.Client, vmi *kubevirtv1.VirtualMachineInstance) error {
+	return c.Delete(context.TODO(), vmi)
 }
 
 func CreateIfNotExistsMapping(c client.Client, mapping *unstructured.Unstructured) error {

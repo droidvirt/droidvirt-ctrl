@@ -3,8 +3,6 @@ package droidvirt
 import (
 	"fmt"
 
-	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
-	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,6 +11,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
 )
 
 func (r *ReconcileDroidVirt) newVMIForDroidVirt(virt *dvv1alpha1.DroidVirt, dataPVC *corev1.PersistentVolumeClaim) (*kubevirtv1.VirtualMachineInstance, error) {
@@ -159,12 +160,21 @@ func (r *ReconcileDroidVirt) newServiceForDroidVirt(virt *dvv1alpha1.DroidVirt) 
 	return service, nil
 }
 
+func GatewayMappingGVK() schema.GroupVersionKind {
+	return schema.GroupVersionKind{
+		Group:   "getambassador.io",
+		Kind:    "Mapping",
+		Version: "v1",
+	}
+}
+
 func (r *ReconcileDroidVirt) newGatewayMappingForService(gatewaySpec *dvv1alpha1.VirtGateway, virt *dvv1alpha1.DroidVirt, service *corev1.Service) (*unstructured.Unstructured, error) {
-	u := &unstructured.Unstructured{}
-	u.Object = map[string]interface{}{
+	mapping := &unstructured.Unstructured{}
+	mapping.Object = map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"name":      service.Name + "-mapping",
 			"namespace": service.Namespace,
+			"labels":    utils.GenMappingLabelsForDroidVirt(virt),
 		},
 		"spec": map[string]interface{}{
 			"prefix":        gatewaySpec.VncWebsocketUrl,
@@ -172,15 +182,11 @@ func (r *ReconcileDroidVirt) newGatewayMappingForService(gatewaySpec *dvv1alpha1
 			"use_websocket": true,
 		},
 	}
-	u.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "getambassador.io",
-		Kind:    "Mapping",
-		Version: "v1",
-	})
+	mapping.SetGroupVersionKind(GatewayMappingGVK())
 
-	if err := controllerutil.SetControllerReference(virt, u, r.scheme); err != nil {
+	if err := controllerutil.SetControllerReference(virt, mapping, r.scheme); err != nil {
 		return nil, err
 	}
 
-	return u, nil
+	return mapping, nil
 }

@@ -20,7 +20,7 @@ func (r *ReconcileDroidVirt) syncStatus(virt *dvv1alpha1.DroidVirt) error {
 	}
 
 	if !reflect.DeepEqual(oldVirt.Status, virt.Status) {
-		return r.client.Update(context.TODO(), virt)
+		return r.client.Status().Update(context.TODO(), virt)
 	} else {
 		return nil
 	}
