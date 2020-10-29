@@ -22,6 +22,10 @@ func GenPVCLabelsForDroidVirtVolume(virtVolume *dvv1alpha1.DroidVirtVolume) map[
 	}
 }
 
+func GenPVCLabelToMarkDroidVirtVolumeReady() (string, string) {
+	return "droidvirtvolume.droidvirt.io/cloud-init",  "done"
+}
+
 func GenVMILabelsForDroidVirtVolume(virtVolume *dvv1alpha1.DroidVirtVolume) map[string]string {
 	return map[string]string{
 		"droidvirtvolume.droidvirt.io/name":  virtVolume.Name,

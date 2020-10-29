@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"time"
 
 	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
@@ -22,6 +23,16 @@ import (
 )
 
 var log = logf.Log.WithName("droidvirtvolume")
+
+var needRequeueIn30s = reconcile.Result{
+	Requeue:      true,
+	RequeueAfter: time.Second * 30,
+}
+
+var needRequeueIn5s = reconcile.Result{
+	Requeue:      true,
+	RequeueAfter: time.Second * 5,
+}
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -48,7 +59,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource DroidVirtVolume
-	err = c.Watch(&source.Kind{Type: &dvv1alpha1.DroidVirtVolume{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(&source.Kind{Type: &dvv1alpha1.DroidVirtVolume{}}, &handler.EnqueueRequestForObject{}, predicate.GenerationChangedPredicate{})
 	if err != nil {
 		return err
 	}
@@ -82,6 +93,246 @@ type ReconcileDroidVirtVolume struct {
 	scheme *runtime.Scheme
 }
 
+type RelatedResource struct {
+	VirtVolume *dvv1alpha1.DroidVirtVolume
+	PVC        *corev1.PersistentVolumeClaim
+	VMI        *kubevirtv1.VirtualMachineInstance
+	CloudInit  CloudInitStatus
+}
+
+func (r *ReconcileDroidVirtVolume) FetchRelatedResource(request reconcile.Request) (*RelatedResource, error) {
+	res := &RelatedResource{}
+
+	virt := &dvv1alpha1.DroidVirtVolume{}
+	err := r.client.Get(context.TODO(), request.NamespacedName, virt)
+	if errors.IsNotFound(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	res.VirtVolume = virt
+
+	pvc, err := r.relatedPVC(res.VirtVolume)
+	if err != nil {
+		return res, err
+	}
+	res.PVC = pvc
+
+	k, v := utils.GenPVCLabelToMarkDroidVirtVolumeReady()
+	if res.PVC != nil && res.PVC.Labels != nil && res.PVC.Labels[k] == v {
+		res.CloudInit = CloudInitDone
+		return res, nil
+	}
+
+	vmi, err := r.relatedVMI(res.VirtVolume)
+	if err != nil {
+		return res, err
+	}
+	res.VMI = vmi
+
+	if res.VMI != nil && (res.VMI.Status.Phase == kubevirtv1.Running && len(res.VMI.Status.Interfaces) > 0) {
+		vmiIP := res.VMI.Status.Interfaces[0].IP
+		status, err := cloudInitStatus(22, vmiIP, config.CloudInitVMISSHUser, config.CloudInitVMISSHPassword)
+		if err != nil {
+			log.Error(err, "Get cloud-init status err")
+			return res, err
+		}
+		res.CloudInit = status
+	}
+
+	return res, nil
+}
+
+type ReconcileAction struct {
+	Tag      string
+	Expected func(*RelatedResource) bool
+	Action   func(*RelatedResource, *ReconcileDroidVirtVolume) (reconcile.Result, error)
+}
+
+var actions = []ReconcileAction{
+	{
+		Tag: "PVC committed",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC == nil
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			claim, err := r.newPVCForDroidVirtVolume(res.VirtVolume)
+			log.Info("PVC Generated", "PVC", claim)
+			if err != nil {
+				log.Error(err, "Generate PVC error")
+				return needRequeueIn5s, err
+			}
+
+			if err := utils.CreateIfNotExistsPVC(r.client, r.scheme, claim); err != nil {
+				log.Error(err, "Create PVC error")
+				return needRequeueIn30s, err
+			}
+			log.Info("PVC created")
+
+			res.VirtVolume.Status.Phase = dvv1alpha1.VolumePending
+			res.VirtVolume.Status.RelatedPVC = claim.Name
+			r.appendLog(res.VirtVolume, fmt.Sprintf("PVC is created: %s/%s", claim.Namespace, claim.Name))
+			_ = r.syncStatus(res.VirtVolume)
+			return reconcile.Result{}, nil
+		},
+	},
+	{
+		Tag: "PVC lost",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC != nil && res.PVC.Status.Phase == corev1.ClaimLost
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			res.VirtVolume.Status.Phase = dvv1alpha1.VolumePVCFailed
+			r.appendLog(res.VirtVolume, fmt.Sprintf("PVC lost: %s/%s", res.PVC.Namespace, res.PVC.Name))
+			_ = r.syncStatus(res.VirtVolume)
+			return reconcile.Result{}, nil
+		},
+	},
+	{
+		Tag: "PVC bounded, create VMI",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC != nil && res.PVC.Status.Phase == corev1.ClaimBound &&
+				res.CloudInit != CloudInitDone &&
+				res.VMI == nil
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			vmi, err := r.newVMIForDroidVirtVolume(res.VirtVolume, res.PVC.Name)
+			log.Info("VMI Generated", "VMI", vmi)
+			if err != nil {
+				log.Error(err, "Generate VMI error")
+				return needRequeueIn5s, err
+			}
+
+			if err := utils.CreateIfNotExistsVMI(r.client, r.scheme, vmi); err != nil {
+				log.Error(err, "Create VMI error")
+				return needRequeueIn30s, err
+			}
+			log.Info("VMI created")
+
+			res.VirtVolume.Status.Phase = dvv1alpha1.VolumePVCBounded
+			r.appendLog(res.VirtVolume, fmt.Sprintf("VMI has created"))
+			_ = r.syncStatus(res.VirtVolume)
+			return reconcile.Result{}, nil
+		},
+	},
+	{
+		Tag: "VMI pending",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC != nil && res.PVC.Status.Phase == corev1.ClaimBound &&
+				res.CloudInit != CloudInitDone &&
+				res.VMI != nil &&
+				(res.VMI.Status.Phase == kubevirtv1.VmPhaseUnset ||
+					res.VMI.Status.Phase == kubevirtv1.Pending ||
+					res.VMI.Status.Phase == kubevirtv1.Scheduling ||
+					res.VMI.Status.Phase == kubevirtv1.Scheduled)
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			workerPod, err := r.relatedPod(res.VMI)
+			if err != nil || workerPod == nil || workerPod.GetDeletionTimestamp() != nil {
+				return needRequeueIn5s, err
+			}
+			if r.isPodBlocking(workerPod) {
+				err := utils.DeleteVMI(r.client, res.VMI)
+				if err != nil {
+					return needRequeueIn5s, err
+				}
+				r.appendLog(res.VirtVolume, fmt.Sprintf("VMI's pod is blocking, delete failed VMI: %s/%s (%s)", res.VMI.Namespace, res.VMI.Name, res.VMI.UID))
+				_ = r.syncStatus(res.VirtVolume)
+				return reconcile.Result{}, nil
+			} else {
+				r.appendLog(res.VirtVolume, fmt.Sprintf("Waiting VMI to be ready, worker pod: %s/%s, current VMI phase: %s", workerPod.Namespace, workerPod.Name, res.VMI.Status.Phase))
+				_ = r.syncStatus(res.VirtVolume)
+				return needRequeueIn30s, nil
+			}
+		},
+	},
+	{
+		Tag: "VMI failed",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC != nil && res.PVC.Status.Phase == corev1.ClaimBound &&
+				res.CloudInit != CloudInitDone &&
+				res.VMI != nil &&
+				(res.VMI.Status.Phase == kubevirtv1.Succeeded ||
+					res.VMI.Status.Phase == kubevirtv1.Failed)
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			err := utils.DeleteVMI(r.client, res.VMI)
+			if err != nil {
+				return needRequeueIn5s, err
+			}
+			res.VirtVolume.Status.Phase = dvv1alpha1.VolumeInitFailed
+			r.appendLog(res.VirtVolume, "VMI failed, delete VMI")
+			_ = r.syncStatus(res.VirtVolume)
+			return reconcile.Result{}, nil
+		},
+	},
+	{
+		Tag: "Cloud-init job running",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC != nil && res.PVC.Status.Phase == corev1.ClaimBound &&
+				(res.CloudInit == CloudInitUnknown || res.CloudInit == CloudInitRunning) &&
+				res.VMI != nil && res.VMI.Status.Phase == kubevirtv1.Running
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			res.VirtVolume.Status.Phase = dvv1alpha1.VolumeInitializing
+			r.appendLog(res.VirtVolume, fmt.Sprintf("Waiting cloud-init job done, worker pod ip: %s", res.VMI.Status.Interfaces[0].IP))
+			_ = r.syncStatus(res.VirtVolume)
+			return needRequeueIn30s, nil
+		},
+	},
+	{
+		Tag: "Cloud-init job failed",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC != nil && res.PVC.Status.Phase == corev1.ClaimBound &&
+				res.CloudInit == CloudInitFailed &&
+				res.VMI != nil
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			err := utils.DeleteVMI(r.client, res.VMI)
+			if err != nil {
+				return needRequeueIn5s, err
+			}
+			res.VirtVolume.Status.Phase = dvv1alpha1.VolumeInitFailed
+			r.appendLog(res.VirtVolume, "cloud-init job failed, delete VMI")
+			_ = r.syncStatus(res.VirtVolume)
+			return reconcile.Result{}, nil
+		},
+	},
+	{
+		Tag: "Cloud-init job done",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC != nil && res.PVC.Status.Phase == corev1.ClaimBound &&
+				res.CloudInit == CloudInitDone
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			if err := r.markPVCReady(res.PVC); err != nil {
+				return needRequeueIn5s, err
+			}
+			res.VirtVolume.Status.Phase = dvv1alpha1.VolumeReady
+			r.appendLog(res.VirtVolume, "cloud-init job done")
+			_ = r.syncStatus(res.VirtVolume)
+			return reconcile.Result{}, nil
+		},
+	},
+	{
+		Tag: "Clean ready VMI",
+		Expected: func(res *RelatedResource) bool {
+			return res.PVC != nil && res.PVC.Status.Phase == corev1.ClaimBound &&
+				res.CloudInit == CloudInitDone &&
+				res.VMI != nil
+		},
+		Action: func(res *RelatedResource, r *ReconcileDroidVirtVolume) (reconcile.Result, error) {
+			err := utils.DeleteVMI(r.client, res.VMI)
+			if err != nil {
+				return needRequeueIn5s, err
+			}
+			r.appendLog(res.VirtVolume, "clean ready VMI")
+			_ = r.syncStatus(res.VirtVolume)
+			return reconcile.Result{}, nil
+		},
+	},
+}
+
 // Reconcile reads that state of the cluster for a DroidVirtVolume object and makes changes based on the state read
 // and what is in the DroidVirtVolume.Spec
 // Note:
@@ -90,166 +341,31 @@ type ReconcileDroidVirtVolume struct {
 func (r *ReconcileDroidVirtVolume) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
-	// Fetch the DroidVirtVolume instance
-	virtVolume := &dvv1alpha1.DroidVirtVolume{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, virtVolume)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
-			return reconcile.Result{}, nil
-		}
-		// Error reading the object - requeue the request.
-		return reconcile.Result{}, err
+	res, err := r.FetchRelatedResource(request)
+	if err != nil || res == nil {
+		return needRequeueIn5s, err
 	}
 
-	reqLogger.Info("Reconciling DroidVirtVolume", "Status", virtVolume.Status)
-	switch virtVolume.Status.Phase {
-	case "":
-		// Generate PVC spec
-		claim, err := r.newPVCForDroidVirtVolume(virtVolume)
-		reqLogger.Info("Generate PVC", "PVC", claim)
-		if err != nil {
-			_ = r.appendLogAndSync(virtVolume, fmt.Sprintf("generate PVC spec error: %v", err))
-			return reconcile.Result{}, fmt.Errorf("generate PVC spec error: %v", err)
-		}
+	reqLogger.Info("Reconciling DroidVirtVolume", "Phase", res.VirtVolume.Status.Phase)
 
-		// Create PVC if not found
-		if err := utils.CreateIfNotExistsPVC(r.client, r.scheme, claim); err != nil {
-			_ = r.appendLogAndSync(virtVolume, fmt.Sprintf("creating PVC error, retry after 30s: %v", err))
-			return reconcile.Result{
-				Requeue:      true,
-				RequeueAfter: time.Second * 30,
-			}, err
-		}
-		reqLogger.Info("PVC created")
-
-		virtVolume.Status.Phase = dvv1alpha1.VolumePending
-		virtVolume.Status.RelatedPVC = claim.Name
-		r.appendLog(virtVolume, fmt.Sprintf("PVC is created: %s/%s", claim.Namespace, claim.Name))
-		_ = r.syncStatus(virtVolume)
-		return reconcile.Result{}, nil
-	case dvv1alpha1.VolumePending:
-		claim, err := r.relatedPVC(virtVolume)
-		if err != nil || claim == nil {
-			reqLogger.Error(err, "Related PVC not found")
-			return reconcile.Result{}, err
-		}
-
-		switch claim.Status.Phase {
-		case corev1.ClaimPending:
-			reqLogger.Info("Related PVC is pending, waiting...")
-			return reconcile.Result{
-				Requeue:      true,
-				RequeueAfter: time.Second * 30,
-			}, nil
-		case corev1.ClaimBound:
-			virtVolume.Status.Phase = dvv1alpha1.VolumePVCBounded
-			r.appendLog(virtVolume, fmt.Sprintf("PVC is bounded: %v", claim.ObjectMeta))
-			_ = r.syncStatus(virtVolume)
-			return reconcile.Result{}, nil
-		case corev1.ClaimLost:
-			virtVolume.Status.Phase = dvv1alpha1.VolumePVCFailed
-			r.appendLog(virtVolume, fmt.Sprintf("PVC is lost: %v", claim.ObjectMeta))
-			_ = r.syncStatus(virtVolume)
-			return reconcile.Result{}, fmt.Errorf("related PVC is lost")
-		}
-	case dvv1alpha1.VolumePVCBounded:
-		claim, err := r.relatedPVC(virtVolume)
-		if claim == nil {
-			reqLogger.Error(err, "Related PVC not found")
-			return reconcile.Result{}, err
-		}
-
-		vmi, err := r.newVMIForDroidVirtVolume(virtVolume, claim.Name)
-		reqLogger.Info("Generate VMI", "VMI", vmi)
-		if err != nil {
-			_ = r.appendLogAndSync(virtVolume, fmt.Sprintf("generate VMI spec error: %v", err))
-			return reconcile.Result{}, fmt.Errorf("generate VMI spec error: %v", err)
-		}
-
-		// Create VMI if not found
-		if err := utils.CreateIfNotExistsVMI(r.client, r.scheme, vmi); err != nil {
-			_ = r.appendLogAndSync(virtVolume, fmt.Sprintf("creating VMI error, retry after 30s: %v", err))
-			return reconcile.Result{
-				Requeue:      true,
-				RequeueAfter: time.Second * 30,
-			}, err
-		}
-		reqLogger.Info("VMI created")
-
-		virtVolume.Status.Phase = dvv1alpha1.VolumeInitializing
-		r.appendLog(virtVolume, fmt.Sprintf("VMI is created: %s/%s", vmi.Name, vmi.Namespace))
-		_ = r.syncStatus(virtVolume)
-		return reconcile.Result{}, nil
-	case dvv1alpha1.VolumeInitializing:
-		vmi, err := r.relatedVMI(virtVolume)
-		if err != nil || vmi == nil {
-			reqLogger.Error(err, "Related VMI not found")
-			return reconcile.Result{}, err
-		}
-
-		switch vmi.Status.Phase {
-		case kubevirtv1.Pending, kubevirtv1.Scheduled, kubevirtv1.Scheduling:
-			reqLogger.Info("Related VMI is pending, waiting...")
-			return reconcile.Result{
-				Requeue:      true,
-				RequeueAfter: time.Second * 30,
-			}, nil
-		case kubevirtv1.Running:
-			reqLogger.Info("Related VMI is running, waiting cloud-init job done...")
-			if len(vmi.Status.Interfaces) > 0 {
-				vmiIP := vmi.Status.Interfaces[0].IP
-				reqLogger.Info("cloud-init VMI's info", "ip", vmiIP)
-				status, err := cloudInitStatus(22, vmiIP, config.CloudInitVMISSHUser, config.CloudInitVMISSHPassword)
-				switch status {
-				case CloudInitUnknown, CloudInitRunning:
-					reqLogger.Error(err, "cloud-init SSH check failed, retry after 30s")
-					return reconcile.Result{
-						Requeue:      true,
-						RequeueAfter: time.Second * 30,
-					}, err
-				case CloudInitDone:
-					virtVolume.Status.Phase = dvv1alpha1.VolumeReady
-					r.appendLog(virtVolume, fmt.Sprintf("VMI is running, and cloud-init is ready: %v", vmi.ObjectMeta))
-					_ = r.syncStatus(virtVolume)
-					return reconcile.Result{}, nil
-				case CloudInitFailed:
-					virtVolume.Status.Phase = dvv1alpha1.VolumeInitFailed
-					r.appendLog(virtVolume, fmt.Sprintf("cloud-init error output: %v", err))
-					_ = r.syncStatus(virtVolume)
-					return reconcile.Result{}, err
-				}
+	var processedTags []string = nil
+	combineResult := reconcile.Result{}
+	for _, action := range actions {
+		if action.Expected(res) {
+			processedTags = append(processedTags, action.Tag)
+			result, err := action.Action(res, r)
+			if err != nil {
+				reqLogger.Error(err, "ReconcileAction error", "ActionTag", action.Tag)
+			} else {
+				reqLogger.Info("ReconcileAction success", "ActionTag", action.Tag)
 			}
-			return reconcile.Result{
-				Requeue:      true,
-				RequeueAfter: time.Second * 30,
-			}, nil
-		case kubevirtv1.Succeeded, kubevirtv1.Failed, kubevirtv1.Unknown:
-			virtVolume.Status.Phase = dvv1alpha1.VolumeInitFailed
-			r.appendLog(virtVolume, fmt.Sprintf("VMI is %s: %v", vmi.Status.Phase, vmi.ObjectMeta))
-			_ = r.syncStatus(virtVolume)
-			return reconcile.Result{}, fmt.Errorf("VMI has some trouble")
+			combineResult.Requeue = combineResult.Requeue || result.Requeue
+			if combineResult.RequeueAfter == 0 || combineResult.RequeueAfter > result.RequeueAfter {
+				combineResult.RequeueAfter = result.RequeueAfter
+			}
 		}
-	case dvv1alpha1.VolumeReady, dvv1alpha1.VolumeInitFailed:
-		claim, err := r.relatedPVC(virtVolume)
-		if claim == nil {
-			reqLogger.Error(err, "Related Claim has lost, recreate it")
-			virtVolume.Status.Phase = ""
-			virtVolume.Status.RelatedPVC = ""
-			_ = r.syncStatus(virtVolume)
-			return reconcile.Result{}, nil
-		}
-
-		vmi, _ := r.relatedVMI(virtVolume)
-		if vmi != nil {
-			reqLogger.Info("Cloud-init VMI's job is complete, delete it", "VMI.Spec", vmi.Spec, "VMI.status", vmi.Status)
-			//return reconcile.Result{}, nil
-			return reconcile.Result{}, r.client.Delete(context.TODO(), vmi)
-		}
-
 	}
+	reqLogger.Info("ReconcileAction", "ProcessedTags", processedTags)
 
-	return reconcile.Result{}, nil
+	return combineResult, nil
 }

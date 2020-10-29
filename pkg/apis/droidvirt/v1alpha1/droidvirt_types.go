@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -14,8 +15,20 @@ type DroidVirtSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
+	VM               *VMSpec                                  `json:"vm,omitempty"`
 	OSPVCSource      corev1.PersistentVolumeClaimVolumeSource `json:"osPVC"`
 	DataVolumeSource DroidVirtVolumeSelector                  `json:"dataVolume"`
+}
+
+type VMSpec struct {
+	// Resources describes the Compute Resources required by this vmi.
+	Resources kubevirtv1.ResourceRequirements `json:"resources,omitempty"`
+	// CPU allow specified the detailed CPU topology inside the vmi.
+	// +optional
+	CPU *kubevirtv1.CPU `json:"cpu,omitempty"`
+	// Memory allow specifying the VMI memory features.
+	// +optional
+	Memory *kubevirtv1.Memory `json:"memory,omitempty"`
 }
 
 type DroidVirtVolumeSelector struct {
@@ -45,16 +58,16 @@ type DroidVirtStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Phase      DroidVirtPhase        `json:"phase,omitempty"`
+	Phase DroidVirtPhase `json:"phase,omitempty"`
 
-	DataPVC    string                `json:"dataPVC,omitempty"`
+	DataPVC string `json:"dataPVC,omitempty"`
 
-	Gateway    *VirtGateway          `json:"gateway,omitempty"`
+	Gateway *VirtGateway `json:"gateway,omitempty"`
 
 	RelatedPod string                `json:"relatedPod,omitempty"`
 	Interfaces []VMINetworkInterface `json:"interfaces,omitempty"`
 
-	Logs       []StatusLog           `json:"logs,omitempty"`
+	Logs []StatusLog `json:"logs,omitempty"`
 }
 
 type VMINetworkInterface struct {

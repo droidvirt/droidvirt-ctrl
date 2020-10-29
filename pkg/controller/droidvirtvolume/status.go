@@ -3,15 +3,36 @@ package droidvirtvolume
 import (
 	"context"
 	"fmt"
+	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
 	"reflect"
 	"strings"
 	"time"
 
 	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
 	"golang.org/x/crypto/ssh"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+func (r *ReconcileDroidVirtVolume) markPVCReady(pvc *corev1.PersistentVolumeClaim) error {
+	currPVC := &corev1.PersistentVolumeClaim{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{
+		Name:      pvc.Name,
+		Namespace: pvc.Namespace,
+	}, currPVC)
+	if err != nil {
+		return err
+	}
+
+	k, v := utils.GenPVCLabelToMarkDroidVirtVolumeReady()
+	if currPVC.Labels[k] == v {
+		return nil
+	}
+
+	currPVC.Labels[k] = v
+	return r.client.Update(context.TODO(), currPVC)
+}
 
 func (r *ReconcileDroidVirtVolume) syncStatus(volume *dvv1alpha1.DroidVirtVolume) error {
 	oldVolume := &dvv1alpha1.DroidVirtVolume{}
@@ -24,7 +45,7 @@ func (r *ReconcileDroidVirtVolume) syncStatus(volume *dvv1alpha1.DroidVirtVolume
 	}
 
 	if !reflect.DeepEqual(oldVolume.Status, volume.Status) {
-		return r.client.Update(context.TODO(), volume)
+		return r.client.Status().Update(context.TODO(), volume)
 	} else {
 		return nil
 	}
@@ -71,14 +92,14 @@ func cloudInitStatus(sshPort uint32, sshHost, sshUser, sshPassword string) (Clou
 	}
 	defer sshClient.Close()
 
-	statusOutput, _ := executeSSHCmd(sshClient,"cloud-init status")
+	statusOutput, _ := executeSSHCmd(sshClient, "cloud-init status")
 
 	if strings.Contains(string(statusOutput), "status: running") {
 		return CloudInitRunning, nil
 	} else if strings.Contains(string(statusOutput), "status: done") {
 		return CloudInitDone, nil
 	} else if strings.Contains(string(statusOutput), "status: error") {
-		result, _ := executeSSHCmd(sshClient,"cat /var/lib/cloud/data/result.json")
+		result, _ := executeSSHCmd(sshClient, "cat /var/lib/cloud/data/result.json")
 		return CloudInitFailed, fmt.Errorf("cloud-init error, output: %s", string(result))
 	} else {
 		return CloudInitUnknown, fmt.Errorf("cloud-init unknown output: %s", string(statusOutput))
@@ -92,4 +113,23 @@ func executeSSHCmd(client *ssh.Client, cmd string) ([]byte, error) {
 	}
 	defer session.Close()
 	return session.Output(cmd)
+}
+
+func (r *ReconcileDroidVirtVolume) isPodBlocking(po *corev1.Pod) bool {
+	if po.Status.Phase != corev1.PodPending {
+		return false
+	}
+
+	// 300 seconds
+	now := metav1.Now().Second()
+	if now-po.GetCreationTimestamp().Second() < 300 {
+		return false
+	}
+
+	for _, item := range po.Status.Conditions {
+		if item.Type == corev1.PodScheduled && item.Status == corev1.ConditionFalse {
+			return false
+		}
+	}
+	return true
 }

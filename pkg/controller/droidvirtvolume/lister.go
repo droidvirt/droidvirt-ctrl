@@ -65,3 +65,30 @@ func (r *ReconcileDroidVirtVolume) relatedPVC(volume *dvv1alpha1.DroidVirtVolume
 	}
 	return relatedPVC, nil
 }
+
+func (r *ReconcileDroidVirtVolume) relatedPod(vmi *kubevirtv1.VirtualMachineInstance) (*corev1.Pod, error) {
+	podSelector := utils.GenPodLabelsForVMI(vmi)
+	listOpts := &client.ListOptions{
+		Namespace:     vmi.Namespace,
+		LabelSelector: labels.SelectorFromSet(podSelector),
+	}
+
+	pods := &corev1.PodList{}
+	err := r.client.List(context.TODO(), pods, listOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	var relatedPod *corev1.Pod = nil
+	for _, item := range pods.Items {
+		if !metav1.IsControlledBy(&item, vmi) {
+			continue
+		}
+		if relatedPod == nil {
+			relatedPod = &item
+		} else if relatedPod.CreationTimestamp.Before(&item.CreationTimestamp) {
+			relatedPod = &item
+		}
+	}
+	return relatedPod, nil
+}

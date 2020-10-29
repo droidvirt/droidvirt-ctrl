@@ -177,17 +177,38 @@ var actions = []ReconcileAction{
 		},
 		Action: func(res *RelatedResource, r *ReconcileDroidVirt) (reconcile.Result, error) {
 			workerPod, err := r.relatedPod(res.VMI)
-			if err != nil || workerPod == nil {
+			if err != nil || workerPod == nil || workerPod.GetDeletionTimestamp() != nil {
 				return reconcile.Result{
 					Requeue:      true,
 					RequeueAfter: time.Second * 3,
 				}, err
 			}
-			res.Virt.Status.Phase = dvv1alpha1.VirtualMachinePending
-			res.Virt.Status.RelatedPod = workerPod.Name
-			r.appendLog(res.Virt, fmt.Sprintf("VMI is created, worker pod: %s/%s", workerPod.Namespace, workerPod.Name))
-			_ = r.syncStatus(res.Virt)
-			return reconcile.Result{}, nil
+			if r.isPodBlocking(workerPod) {
+				err := utils.DeleteVMI(r.client, res.VMI)
+				if err != nil {
+					return reconcile.Result{
+						Requeue:      true,
+						RequeueAfter: time.Second * 3,
+					}, err
+				}
+				res.Virt.Status.Phase = ""
+				res.Virt.Status.RelatedPod = ""
+				res.Virt.Status.Interfaces = nil
+				r.appendLog(res.Virt, fmt.Sprintf("VMI's pod is blocking, delete failed VMI: %s/%s (%s)", res.VMI.Namespace, res.VMI.Name, res.VMI.UID))
+				_ = r.syncStatus(res.Virt)
+				return reconcile.Result{}, nil
+			} else {
+				res.Virt.Status.Phase = dvv1alpha1.VirtualMachinePending
+				res.Virt.Status.RelatedPod = workerPod.Name
+				r.appendLog(res.Virt, fmt.Sprintf("VMI is created, worker pod: %s/%s", workerPod.Namespace, workerPod.Name))
+				_ = r.syncStatus(res.Virt)
+				// TODO VMI's pod may block on Pending, caused by ceph
+				// kubelet log is "rbd: map failed exit status 1, rbd output: rbd: sysfs write failed\nIn some cases useful info is found in syslog - try \"dmesg | tail\".\nrbd: map failed: (1) Operation not permitted\n"
+				return reconcile.Result{
+					Requeue:      true,
+					RequeueAfter: time.Second * 30,
+				}, nil
+			}
 		},
 	},
 	{

@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -42,4 +43,23 @@ func (r *ReconcileDroidVirt) appendLog(virt *dvv1alpha1.DroidVirt, message strin
 func (r *ReconcileDroidVirt) appendLogAndSync(virt *dvv1alpha1.DroidVirt, message string) error {
 	r.appendLog(virt, message)
 	return r.syncStatus(virt)
+}
+
+func (r *ReconcileDroidVirt) isPodBlocking(po *corev1.Pod) bool {
+	if po.Status.Phase != corev1.PodPending {
+		return false
+	}
+
+	// 300 seconds
+	now := metav1.Now().Second()
+	if now-po.GetCreationTimestamp().Second() < 300 {
+		return false
+	}
+
+	for _, item := range po.Status.Conditions {
+		if item.Type == corev1.PodScheduled && item.Status == corev1.ConditionFalse {
+			return false
+		}
+	}
+	return true
 }

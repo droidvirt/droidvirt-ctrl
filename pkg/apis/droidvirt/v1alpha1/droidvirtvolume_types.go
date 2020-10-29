@@ -69,7 +69,7 @@ const (
 	VolumePVCBounded DroidVirtVolumePhase = "PVCBounded"
 	// PVC is not created successfully
 	VolumePVCFailed DroidVirtVolumePhase = "PVCFailed"
-	// do some initializing job, such as: mkpart, mkfs
+	// cloud-init do some initializing job, such as: mkpart, mkfs
 	VolumeInitializing DroidVirtVolumePhase = "Initializing"
 	// cloud-int VM may failed
 	VolumeInitFailed DroidVirtVolumePhase = "InitFailed"

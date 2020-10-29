@@ -113,6 +113,27 @@ func (r *ReconcileDroidVirt) newVMIForDroidVirt(virt *dvv1alpha1.DroidVirt, data
 		},
 	}
 
+	customVMSpec := virt.Spec.VM
+	if customVMSpec != nil {
+		if customVMSpec.CPU != nil {
+			vmi.Spec.Domain.CPU = customVMSpec.CPU
+		}
+
+		if customVMSpec.Memory != nil {
+			vmi.Spec.Domain.Memory = customVMSpec.Memory
+		}
+
+		// re-generate resource limit
+		if len(customVMSpec.Resources.Limits) != 0 {
+			vmi.Spec.Domain.Resources = customVMSpec.Resources
+		} else {
+			vmi.Spec.Domain.Resources.Limits = corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(string(customVMSpec.CPU.Cores)),
+				corev1.ResourceMemory: *customVMSpec.Memory.Guest,
+			}
+		}
+	}
+
 	if err := controllerutil.SetControllerReference(virt, vmi, r.scheme); err != nil {
 		return nil, err
 	}
