@@ -3,12 +3,12 @@ package droidvirtvolume
 import (
 	"context"
 	"fmt"
-	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/utils"
 	"reflect"
 	"strings"
 	"time"
 
-	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	dvv1alpha1 "github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
 	"golang.org/x/crypto/ssh"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

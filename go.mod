@@ -1,4 +1,4 @@
-module github.com/lxs137/droidvirt-ctrl
+module github.com/droidvirt/droidvirt-ctrl
 
 go 1.14
 

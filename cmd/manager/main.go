@@ -10,10 +10,10 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	//_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"github.com/lxs137/droidvirt-ctrl/pkg/apis"
-	"github.com/lxs137/droidvirt-ctrl/pkg/controller"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/apis"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/controller"
 
-	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	dvv1alpha1 "github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"

@@ -13,9 +13,9 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirt":       schema_pkg_apis_droidvirt_v1alpha1_DroidVirt(ref),
-		"github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtSpec":   schema_pkg_apis_droidvirt_v1alpha1_DroidVirtSpec(ref),
-		"github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtStatus": schema_pkg_apis_droidvirt_v1alpha1_DroidVirtStatus(ref),
+		"github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirt":       schema_pkg_apis_droidvirt_v1alpha1_DroidVirt(ref),
+		"github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtSpec":   schema_pkg_apis_droidvirt_v1alpha1_DroidVirtSpec(ref),
+		"github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtStatus": schema_pkg_apis_droidvirt_v1alpha1_DroidVirtStatus(ref),
 	}
 }
 
@@ -46,19 +46,19 @@ func schema_pkg_apis_droidvirt_v1alpha1_DroidVirt(ref common.ReferenceCallback) 
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtSpec"),
+							Ref: ref("github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtStatus"),
+							Ref: ref("github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtSpec", "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtSpec", "github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1.DroidVirtStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 

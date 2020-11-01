@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
-	"github.com/lxs137/droidvirt-ctrl/pkg/config"
-	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
+	dvv1alpha1 "github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/config"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

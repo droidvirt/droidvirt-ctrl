@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"github.com/lxs137/droidvirt-ctrl/pkg/controller/droidvirtvolume"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/controller/droidvirtvolume"
 )
 
 func init() {

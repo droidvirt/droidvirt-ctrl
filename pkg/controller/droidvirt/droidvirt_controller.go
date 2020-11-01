@@ -20,8 +20,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
-	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
+	dvv1alpha1 "github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/utils"
 )
 
 var log = logf.Log.WithName("droidvirt-controller")

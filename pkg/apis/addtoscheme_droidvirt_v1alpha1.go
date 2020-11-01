@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
 )
 
 func init() {

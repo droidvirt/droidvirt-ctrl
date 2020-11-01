@@ -3,12 +3,12 @@ package droidvirtvolume
 import (
 	"context"
 	"fmt"
-	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/utils"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"time"
 
-	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
-	"github.com/lxs137/droidvirt-ctrl/pkg/config"
+	dvv1alpha1 "github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/config"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"

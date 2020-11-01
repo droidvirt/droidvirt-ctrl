@@ -12,8 +12,8 @@ import (
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	dvv1alpha1 "github.com/lxs137/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
-	"github.com/lxs137/droidvirt-ctrl/pkg/utils"
+	dvv1alpha1 "github.com/droidvirt/droidvirt-ctrl/pkg/apis/droidvirt/v1alpha1"
+	"github.com/droidvirt/droidvirt-ctrl/pkg/utils"
 )
 
 func (r *ReconcileDroidVirt) newVMIForDroidVirt(virt *dvv1alpha1.DroidVirt, dataPVC *corev1.PersistentVolumeClaim) (*kubevirtv1.VirtualMachineInstance, error) {

@@ -2,9 +2,9 @@ FROM golang:1.14-alpine3.12
 
 ENV GOPATH /go
 
-COPY . /go/src/github.com/lxs137/droidvirt-ctrl
+COPY . /go/src/github.com/droidvirt/droidvirt-ctrl
 
-RUN go build -o /operator /go/src/github.com/lxs137/droidvirt-ctrl/cmd/manager
+RUN go build -o /operator /go/src/github.com/droidvirt/droidvirt-ctrl/cmd/manager
 
 FROM alpine:3.10
 
